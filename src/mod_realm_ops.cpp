@@ -527,7 +527,7 @@ public:
         {
             uint32 id = current->GetNextQuestInChain();
             if (!id)
-                id = uint32(std::abs(current->GetNextQuestId()));
+                id = current->GetNextQuestId();
             if (!id || !visited.insert(id).second)
                 break;
             Quest const* linked = sObjectMgr->GetQuestTemplate(id);
