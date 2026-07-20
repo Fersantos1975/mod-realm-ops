@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: |cffffd100RealmOps|r
+## Notes: Compact AzerothCore GM toolkit for WotLK 3.3.5a
+## Author: Fersantos
+## Version: 0.1.6
+## SavedVariablesPerCharacter: RealmOpsDB
+
+RealmOps.lua
