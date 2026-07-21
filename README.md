@@ -29,10 +29,10 @@ mod-realm-ops/
 Stop the servers and make a backup first.
 
 ```bash
-cd /home/cura/azerothcore/modules
+cd /azerothcore/modules
 git clone https://github.com/Fersantos1975/mod-realm-ops.git
 
-cd /home/cura/azerothcore
+cd /azerothcore
 cmake -S . -B build
 cmake --build build -j$(nproc)
 cmake --install build
@@ -78,10 +78,10 @@ The module reuses AzerothCore RBAC permissions for quest lookup, map lookup, and
 After pulling module changes, reconfigure, rebuild, install, and restart the server. Replace the client `RealmOps` addon directory whenever its files change.
 
 ```bash
-cd /home/cura/azerothcore/modules/mod-realm-ops
+cd /azerothcore/modules/mod-realm-ops
 git pull --ff-only
 
-cd /home/cura/azerothcore
+cd /azerothcore
 cmake -S . -B build
 cmake --build build -j$(nproc)
 cmake --install build
