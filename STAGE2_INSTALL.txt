@@ -1,0 +1,18 @@
+Exact server commands
+
+cd /home/cura/azerothcore/modules/mod-realm-ops
+git status
+git pull --ff-only
+
+cd /home/cura/azerothcore
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/home/cura/server -DMODULES=static
+cmake --build build -j"$(nproc)"
+cmake --install build
+
+cd /home/cura/server/bin
+./worldserver
+
+In-game tests:
+.realmops version
+.realmops instance search icecrown
+.realmops instance audit 631
