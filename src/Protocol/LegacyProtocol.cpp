@@ -8,8 +8,8 @@ namespace RealmOps::Protocol
 void SendVersion(ChatHandler* handler, BuildInfo const& info)
 {
     handler->PSendSysMessage(
-        "REALMOPS|VERSION|module={}|protocol={}|modulegit={}|moduledirty={}|core={}|coredate={}|coredirty={}|playerbots={}|playerbotsdirty={}|build={}|built={}",
-        info.moduleVersion, info.protocolVersion, info.moduleCommit, info.moduleWorkspace,
+        "REALMOPS|VERSION|module={}|protocol={}|release={}|capabilities={}|modulegit={}|moduledirty={}|core={}|coredate={}|coredirty={}|playerbots={}|playerbotsdirty={}|build={}|built={}",
+        info.moduleVersion, info.protocolVersion, info.releaseChannel, info.capabilities, info.moduleCommit, info.moduleWorkspace,
         info.coreCommit, info.coreDate, info.coreWorkspace, info.playerbotsCommit,
         info.playerbotsWorkspace, info.buildType, info.builtAt);
 }

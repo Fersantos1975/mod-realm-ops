@@ -1,7 +1,9 @@
 #include "Build/RealmOpsBuildInfo.h"
+#include "Chat.h"
 #include "CommandScript.h"
 #include "Inspectors/Instance/InstanceInspector.h"
 #include "Inspectors/Quest/QuestInspector.h"
+#include "Manifest/RealmOpsManifest.h"
 #include "Protocol/LegacyProtocol.h"
 #include "RBAC.h"
 
@@ -39,7 +41,7 @@ public:
 
     static bool HandleVersion(ChatHandler* handler)
     {
-        RealmOps::Protocol::SendVersion(handler, RealmOps::GetBuildInfo());
+        RealmOps::Protocol::SendVersion(handler, RealmOps::Manifest::Get());
         return true;
     }
 };
