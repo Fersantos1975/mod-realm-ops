@@ -1,6 +1,8 @@
 #include "QuestInspector.h"
 
 #include "Chat.h"
+#include "Group.h"
+#include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Player.h"
 #include "Protocol/LegacyProtocol.h"
@@ -282,4 +284,42 @@ bool QuestInspector::Info(ChatHandler* handler, uint32 questId)
     Protocol::SendQuestInfoEnd(handler, questId, emitted);
     return true;
 }
+bool QuestInspector::Audit(ChatHandler* handler, uint32 questId)
+{
+    Quest const* quest = sObjectMgr->GetQuestTemplate(questId);
+    if (!quest)
+    {
+        Protocol::SendQuestError(handler, "Quest " + std::to_string(questId) + " does not exist");
+        return true;
+    }
+
+    Player* requester = handler->GetSession()->GetPlayer();
+    Group* group = requester->GetGroup();
+    Protocol::SendQuestAuditBegin(handler, questId, quest->GetTitle(), group ? group->GetMembersCount() : 1);
+
+    auto emit = [&](Player* player, std::string const& fallbackName)
+    {
+        if (!player)
+        {
+            Protocol::SendQuestAuditMember(handler, fallbackName, "OFFLINE", "UNKNOWN", "UNKNOWN", "Player is offline");
+            return;
+        }
+
+        std::string reason;
+        std::string eligibility = QuestEligibility(player, quest, reason);
+        std::string status = QuestStatusName(player, quest);
+        std::string result = (eligibility == "AVAILABLE" || status == "ACTIVE" || status == "COMPLETE" || status == "REWARDED") ? "PASS" : "FAIL";
+        Protocol::SendQuestAuditMember(handler, player->GetName(), result, status, eligibility, reason);
+    };
+
+    if (group)
+        for (Group::MemberSlot const& member : group->GetMemberSlots())
+            emit(ObjectAccessor::FindConnectedPlayer(member.guid), member.name);
+    else
+        emit(requester, requester->GetName());
+
+    Protocol::SendQuestAuditEnd(handler);
+    return true;
+}
+
 }

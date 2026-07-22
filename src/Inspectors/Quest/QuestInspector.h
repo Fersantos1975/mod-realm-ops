@@ -12,6 +12,7 @@ class QuestInspector
 public:
     static bool Search(ChatHandler* handler, Acore::ChatCommands::Tail search);
     static bool Info(ChatHandler* handler, uint32 questId);
+    static bool Audit(ChatHandler* handler, uint32 questId);
 };
 }
 

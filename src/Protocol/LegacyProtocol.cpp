@@ -29,4 +29,7 @@ void SendQuestInfo(ChatHandler* handler, std::uint32_t id, std::string const& ti
 }
 void SendQuestChain(ChatHandler* handler, std::string const& direction, std::uint32_t id, std::string const& title, std::string const& status, std::string const& eligibility, std::string const& faction, std::string const& required, std::uint32_t depth, std::string const& reason) { handler->PSendSysMessage("REALMOPS|QUEST_CHAIN|direction={}|id={}|title={}|status={}|eligibility={}|faction={}|required={}|depth={}|reason={}", direction, id, Clean(title), status, eligibility, faction, required, depth, Clean(reason)); }
 void SendQuestInfoEnd(ChatHandler* handler, std::uint32_t id, std::uint32_t chainCount) { handler->PSendSysMessage("REALMOPS|QUEST_INFO_END|id={}|chain={}", id, chainCount); }
+void SendQuestAuditBegin(ChatHandler* handler, std::uint32_t id, std::string const& title, std::uint32_t members) { handler->PSendSysMessage("REALMOPS|QUEST_AUDIT_BEGIN|id={}|title={}|members={}", id, Clean(title), members); }
+void SendQuestAuditMember(ChatHandler* handler, std::string const& name, std::string const& result, std::string const& status, std::string const& eligibility, std::string const& reason) { handler->PSendSysMessage("REALMOPS|QUEST_AUDIT_MEMBER|name={}|result={}|status={}|eligibility={}|reason={}", Clean(name), result, status, eligibility, Clean(reason)); }
+void SendQuestAuditEnd(ChatHandler* handler) { handler->SendSysMessage("REALMOPS|QUEST_AUDIT_END"); }
 }

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0 Release Candidate 1
+
+- Add compatibility and release-support reporting.
+- Keep version differences informational while protocol v1 remains compatible.
+- Add explanatory troubleshooting guidance for supported mixed versions.
+- Add Quest Group Audit and quest report export.
+- Add selectable, copyable Quest and Instance report text.
+- Add mouse-wheel scrollbars to Quest details, Quest audit/chain, Instance audit, and export reports.
+- Add packaged RealmOps icon artwork for the main, floating, and minimap buttons.
+
 ## 0.2.0 - Unreleased
 
 - Simplified compatibility status to Compatible or Protocol mismatch.

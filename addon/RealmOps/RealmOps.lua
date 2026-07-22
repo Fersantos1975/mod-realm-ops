@@ -1,6 +1,6 @@
 local ADDON = ...
 
--- RealmOps v0.1.6
+-- RealmOps v0.2.0
 -- Target: WoW 3.3.5a / AzerothCore. All server commands live here so that
 -- branch-specific command names can be changed without touching the UI.
 local CMD = {
@@ -21,6 +21,7 @@ local CMD = {
   auditGroup = ".realmops instance audit %d %d",
   questSearch = ".realmops quest search %s",
   questInfo = ".realmops quest info %d",
+  questAudit = ".realmops quest audit %d",
   version = ".realmops version",
 }
 
@@ -36,11 +37,13 @@ local tabs, pages, activeTab = {}, {}, "Character"
 local lookup = { kind=nil, expires=0, results={} }
 local questIdBox, itemIdBox
 local activeInput
-local questUI={results={},rows={},info=nil,chain={},detailText=nil,chainText=nil,chainScroll=nil,chainChild=nil,summary=nil}
+local questUI={results={},rows={},info=nil,chain={},detailText=nil,chainText=nil,chainScroll=nil,chainChild=nil,summary=nil,
+  auditMembers={},auditActive=false,auditQuest=nil,detailScroll=nil,detailChild=nil}
 local compatUI={data=nil,text=nil}
 local instanceUI={my={},target={},captureUntil=0,myRows={},targetRows={},myOffset=0,targetOffset=0,mapBox=nil,diffBox=nil,targetLabel=nil}
-local auditUI={search={},members={},searchRows={},memberRows={},filterButtons={},filtered={},mapBox=nil,diffBox=nil,summary=nil,scroll=nil,scrollChild=nil,horizontal=nil,filter="ALL",lastMap=nil,lastDifficulty=nil}
+local auditUI={search={},members={},searchRows={},memberRows={},filterButtons={},filtered={},mapBox=nil,diffBox=nil,summary=nil,scroll=nil,scrollChild=nil,horizontal=nil,filter="ALL",lastMap=nil,lastDifficulty=nil,reportEdit=nil}
 local exportFrame, exportEdit
+local ShowSelectableReport
 local defaults={
   startMinimized=true,showMinimap=true,showMini=true,mbfCompatibility=true,scale=1,
   confirmCommands=true,hideAuditChat=true,defaultDifficulty=0,
@@ -332,9 +335,19 @@ local function RenderQuest()
   end
 
   if questUI.chainText then
-    local lines={"|cffffd100Quest chain inspector|r"}
-    if #questUI.chain==0 then table.insert(lines,"No linked prerequisite/next quests reported.") end
-    for _,r in ipairs(questUI.chain) do
+    local lines={}
+    if questUI.auditActive then
+      table.insert(lines,"|cffffd100Quest group audit|r")
+      if #questUI.auditMembers==0 then table.insert(lines,"Waiting for group results...") end
+      for _,r in ipairs(questUI.auditMembers) do
+        local color=r.result=="PASS" and "|cff55ff55" or (r.result=="OFFLINE" and "|cffaaaaaa" or "|cffff7777")
+        table.insert(lines,string.format("%s%s|r  %s  •  %s",color,r.result or "?",r.name or "Unknown",r.status or "?"))
+        table.insert(lines,"   |cffdddddd"..(r.reason or "No reason").."|r")
+      end
+    else
+      table.insert(lines,"|cffffd100Quest chain inspector|r")
+      if #questUI.chain==0 then table.insert(lines,"No linked prerequisite/next quests reported.") end
+      for _,r in ipairs(questUI.chain) do
       local arrow=r.direction=="NEXT" and "->" or "<-"
       local state=r.status=="REWARDED" and "|cff55ff55[REWARDED]|r"
         or (r.status=="COMPLETE" and "|cff55ff55[COMPLETE]|r"
@@ -344,16 +357,43 @@ local function RenderQuest()
       local indent=string.rep("  ",math.min(depth,6))
       table.insert(lines,string.format("%s%s %s %s [%s] • %s • %s",indent,state,arrow,r.title or "Unknown",r.id or "?",FactionText(r.faction),r.required or "linked"))
       if r.reason and r.reason~="" and r.eligibility~="AVAILABLE" and r.status~="REWARDED" then table.insert(lines,indent.."   |cffaaaaaa"..r.reason.."|r") end
+      end
     end
     questUI.chainText:SetText(table.concat(lines,"\n"))
-    if questUI.chainChild then questUI.chainChild:SetHeight(math.max(120,#lines*15+12)) end
+    if questUI.chainChild then local h=math.max(120,#lines*15+12); questUI.chainChild:SetHeight(h); questUI.chainText:SetHeight(h) end
   end
   if questUI.summary then questUI.summary:SetText(#questUI.results.." result(s)") end
 end
 
 local function RequestQuestInfo(id)
-  questUI.info=nil; questUI.chain={}; RenderQuest()
+  questUI.info=nil; questUI.chain={}; questUI.auditActive=false; questUI.auditMembers={}; RenderQuest()
   SendCommand(string.format(CMD.questInfo,id)); SetStatus("Loading quest "..id.." details...")
+end
+
+local function RunQuestAudit()
+  local id=PositiveId(questIdBox,"quest")
+  if not id then return end
+  questUI.auditMembers={}; questUI.auditActive=true; questUI.auditQuest=id; RenderQuest()
+  SendCommand(string.format(CMD.questAudit,id)); SetStatus("Auditing quest "..id.." for the group...")
+end
+
+local function ShowQuestExport()
+  if not questUI.info and #questUI.auditMembers==0 then SetStatus("Load quest details or run a group audit before exporting.",true); return end
+  local lines={"RealmOps quest report"}
+  if questUI.info then
+    local q=questUI.info
+    table.insert(lines,string.format("Quest: %s [%s]",q.title or "Unknown",q.id or "?"))
+    table.insert(lines,string.format("Checked player: %s | Status: %s | Eligibility: %s",q.player or "Unknown",q.status or "?",q.eligibility or "?"))
+    table.insert(lines,"Reason: "..(q.reason or "None")); table.insert(lines,"")
+  end
+  if #questUI.auditMembers>0 then
+    table.insert(lines,"Group audit")
+    for _,r in ipairs(questUI.auditMembers) do table.insert(lines,string.format("%s | %s | %s | %s",r.result or "?",r.name or "Unknown",r.status or "?",r.reason or "No reason")) end
+  else
+    table.insert(lines,"Quest chain")
+    for _,r in ipairs(questUI.chain) do table.insert(lines,string.format("%s | %s [%s] | %s",r.direction or "?",r.title or "Unknown",r.id or "?",r.reason or r.eligibility or "")) end
+  end
+  ShowSelectableReport("RealmOps quest report",table.concat(lines,"\n"))
 end
 
 local function BuildQuest()
@@ -364,6 +404,8 @@ local function BuildQuest()
   end,"Search through the RealmOps server module"):SetPoint("TOPLEFT",310,-29)
   questIdBox=AddField(p,"Quest ID",420,-12,85,true); questIdBox.realmOpsExpected="quest"
   Button(p,"Details",95,24,function() local id=PositiveId(questIdBox,"quest"); if id then RequestQuestInfo(id) end end,"Show faction, eligibility, requirements, and chain"):SetPoint("TOPLEFT",515,-29)
+  Button(p,"Audit Group",95,20,RunQuestAudit,"Check this quest for every online group or raid member"):SetPoint("TOPLEFT",420,-58)
+  Button(p,"Export",95,20,ShowQuestExport,"Open a selectable quest report for copying"):SetPoint("TOPLEFT",515,-58)
 
   local actions={{"Status",CMD.questStatus,false},{"Add",CMD.questAdd,false},{"Complete",CMD.questComplete,false},{"Reward",CMD.questReward,true},{"Remove",CMD.questRemove,true}}
   for i,a in ipairs(actions) do
@@ -381,10 +423,12 @@ local function BuildQuest()
 
   local details=CreateFrame("Frame",nil,p); details:SetPoint("TOPLEFT",305,-108); details:SetPoint("BOTTOMRIGHT",-12,12); Backdrop(details,C.panel)
   local dh=Label(details,"Quest information","GameFontNormalSmall"); dh:SetPoint("TOPLEFT",8,-7)
-  questUI.detailText=details:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); questUI.detailText:SetPoint("TOPLEFT",8,-28); questUI.detailText:SetPoint("TOPRIGHT",-8,-28); questUI.detailText:SetHeight(175); questUI.detailText:SetJustifyH("LEFT"); questUI.detailText:SetJustifyV("TOP"); questUI.detailText:SetTextColor(unpack(C.white))
+  local detailScroll=CreateFrame("ScrollFrame","REALMOPS_QuestDetailScroll",details,"UIPanelScrollFrameTemplate"); detailScroll:SetPoint("TOPLEFT",8,-28); detailScroll:SetPoint("TOPRIGHT",-28,-28); detailScroll:SetHeight(172); detailScroll:EnableMouseWheel(true); questUI.detailScroll=detailScroll
+  questUI.detailText=CreateFrame("EditBox",nil,detailScroll); questUI.detailText:SetMultiLine(true); questUI.detailText:SetAutoFocus(false); questUI.detailText:SetFontObject(GameFontHighlightSmall); questUI.detailText:SetWidth(278); questUI.detailText:SetHeight(172); questUI.detailText:SetTextColor(unpack(C.white)); detailScroll:SetScrollChild(questUI.detailText)
+  questUI.detailText:SetScript("OnEscapePressed",function(self) self:ClearFocus() end); detailScroll:SetScript("OnMouseWheel",function(self,delta) self:SetVerticalScroll(math.max(0,self:GetVerticalScroll()-delta*45)) end)
   local chainScroll=CreateFrame("ScrollFrame","REALMOPS_QuestChainScroll",details,"UIPanelScrollFrameTemplate"); chainScroll:SetPoint("TOPLEFT",8,-205); chainScroll:SetPoint("BOTTOMRIGHT",-28,8); chainScroll:EnableMouseWheel(true); questUI.chainScroll=chainScroll
   local chainChild=CreateFrame("Frame",nil,chainScroll); chainChild:SetWidth(280); chainChild:SetHeight(120); chainScroll:SetScrollChild(chainChild); questUI.chainChild=chainChild
-  questUI.chainText=chainChild:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); questUI.chainText:SetPoint("TOPLEFT",0,0); questUI.chainText:SetWidth(280); questUI.chainText:SetJustifyH("LEFT"); questUI.chainText:SetJustifyV("TOP"); questUI.chainText:SetTextColor(unpack(C.white))
+  questUI.chainText=CreateFrame("EditBox",nil,chainChild); questUI.chainText:SetPoint("TOPLEFT",0,0); questUI.chainText:SetWidth(280); questUI.chainText:SetHeight(120); questUI.chainText:SetMultiLine(true); questUI.chainText:SetAutoFocus(false); questUI.chainText:SetFontObject(GameFontHighlightSmall); questUI.chainText:SetTextColor(unpack(C.white)); questUI.chainText:SetScript("OnEscapePressed",function(self) self:ClearFocus() end)
   chainScroll:SetScript("OnMouseWheel",function(self,delta) self:SetVerticalScroll(math.max(0,self:GetVerticalScroll()-delta*60)) end)
   RenderQuest()
 end
@@ -511,34 +555,45 @@ local function RenderAudit()
   local rowHeight=Settings().compactAuditRows and 28 or 40
   local contentWidth=Settings().wrapAuditReasons and 610 or 1050
   if auditUI.scrollChild then auditUI.scrollChild:SetWidth(contentWidth); auditUI.scrollChild:SetHeight(math.max(1,#auditUI.filtered)*rowHeight) end
-  for i,row in ipairs(auditUI.memberRows) do
-    local r=auditUI.filtered[i]
-    if r then
-      local color=r.result=="PASS" and "|cff55ff55" or (r.result=="WARN" and "|cffffff55" or (r.result=="OFFLINE" and "|cffaaaaaa" or "|cffff5555"))
-      row.data=r; row:SetHeight(rowHeight-2); row:ClearAllPoints(); row:SetPoint("TOPLEFT",0,-(i-1)*rowHeight); row:SetPoint("TOPRIGHT",0,-(i-1)*rowHeight)
-      row.text:SetFont("Fonts\\FRIZQT__.TTF",Settings().auditFontSize or 10); row.text:SetText(color..(r.result or "?").."|r  "..(r.name or "Unknown").."\n|cffdddddd"..(r.reason or "").."|r"); row:Show()
-    else row.data=nil; row:Hide() end
+  local reportLines={}
+  for _,r in ipairs(auditUI.filtered) do
+    local color=r.result=="PASS" and "|cff55ff55" or (r.result=="WARN" and "|cffffff55" or (r.result=="OFFLINE" and "|cffaaaaaa" or "|cffff5555"))
+    table.insert(reportLines,color..(r.result or "?").."|r  "..(r.name or "Unknown"))
+    table.insert(reportLines,"|cffdddddd"..(r.reason or "").."|r")
+    table.insert(reportLines,"")
   end
+  if auditUI.reportEdit then
+    local text=table.concat(reportLines,"\n"); local h=math.max(1,#reportLines*15+10)
+    auditUI.reportEdit:SetFont("Fonts\\FRIZQT__.TTF",Settings().auditFontSize or 10); auditUI.reportEdit:SetText(text); auditUI.reportEdit:SetHeight(h)
+    auditUI.scrollChild:SetHeight(h)
+  end
+  for _,row in ipairs(auditUI.memberRows) do row:Hide() end
   if auditUI.scroll then auditUI.scroll:SetVerticalScroll(0); auditUI.scroll:SetHorizontalScroll(0) end
   if auditUI.horizontal then auditUI.horizontal:SetMinMaxValues(0,math.max(0,contentWidth-365)); auditUI.horizontal:SetValue(0) end
   if auditUI.summary then auditUI.summary:SetText(string.format("Showing %d of %d",#auditUI.filtered,#auditUI.members)) end
   for name,button in pairs(auditUI.filterButtons) do button:SetBackdropColor(unpack(name==auditUI.filter and C.selected or C.button)) end
 end
 
+ShowSelectableReport=function(title, report)
+  if not exportFrame then
+    exportFrame=CreateFrame("Frame","REALMOPS_ExportFrame",UIParent); exportFrame:SetWidth(610); exportFrame:SetHeight(410); exportFrame:SetPoint("CENTER"); exportFrame:SetFrameStrata("FULLSCREEN_DIALOG"); Backdrop(exportFrame); Movable(exportFrame,"export")
+    exportFrame.title=Label(exportFrame,"RealmOps report"); exportFrame.title:SetPoint("TOPLEFT",14,-14)
+    local help=exportFrame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); help:SetPoint("TOPLEFT",14,-34); help:SetText("Select any text and press Ctrl+C. Ctrl+A selects the complete report."); help:SetTextColor(unpack(C.white))
+    local scroll=CreateFrame("ScrollFrame","REALMOPS_ExportScroll",exportFrame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",14,-58); scroll:SetPoint("BOTTOMRIGHT",-34,45); Backdrop(scroll,C.panel)
+    exportEdit=CreateFrame("EditBox",nil,scroll); exportEdit:SetMultiLine(true); exportEdit:SetAutoFocus(false); exportEdit:SetFontObject(ChatFontNormal); exportEdit:SetWidth(545); exportEdit:SetTextInsets(6,6,6,6); exportEdit:SetScript("OnEscapePressed",function() exportFrame:Hide() end); scroll:SetScrollChild(exportEdit)
+    scroll:EnableMouseWheel(true); scroll:SetScript("OnMouseWheel",function(self,delta) self:SetVerticalScroll(math.max(0,self:GetVerticalScroll()-delta*60)) end)
+    Button(exportFrame,"Select All",90,24,function() exportEdit:SetFocus(); exportEdit:HighlightText() end):SetPoint("BOTTOMLEFT",14,12)
+    Button(exportFrame,"Close",90,24,function() exportFrame:Hide() end):SetPoint("BOTTOMRIGHT",-14,12)
+  end
+  exportFrame.title:SetText(title or "RealmOps report")
+  exportEdit:SetText(report or ""); exportEdit:SetHeight(math.max(310,select(2,(report or ""):gsub("\n","\n"))*16+40)); exportFrame:Show(); exportEdit:SetFocus(); exportEdit:HighlightText()
+end
+
 local function ShowAuditExport()
   if #auditUI.members==0 then SetStatus("Run an instance audit before exporting.",true); return end
   local lines={"RealmOps instance audit",string.format("Map: %s  Difficulty: %s",auditUI.lastMap or "?",auditUI.lastDifficulty or "?"),""}
   for _,r in ipairs(auditUI.members) do table.insert(lines,string.format("%s | %s | %s",r.result or "?",r.name or "Unknown",r.reason or "No reason")) end
-  local report=table.concat(lines,"\n")
-  if not exportFrame then
-    exportFrame=CreateFrame("Frame","REALMOPS_ExportFrame",UIParent); exportFrame:SetWidth(610); exportFrame:SetHeight(410); exportFrame:SetPoint("CENTER"); exportFrame:SetFrameStrata("FULLSCREEN_DIALOG"); Backdrop(exportFrame); Movable(exportFrame,"export")
-    local title=Label(exportFrame,"RealmOps — Copy audit report"); title:SetPoint("TOPLEFT",14,-13)
-    local help=exportFrame:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); help:SetPoint("TOPLEFT",14,-35); help:SetText("Press Ctrl+C to copy the selected report."); help:SetTextColor(unpack(C.white))
-    local scroll=CreateFrame("ScrollFrame","REALMOPS_ExportScroll",exportFrame,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",14,-58); scroll:SetPoint("BOTTOMRIGHT",-34,45); Backdrop(scroll,C.panel)
-    exportEdit=CreateFrame("EditBox",nil,scroll); exportEdit:SetMultiLine(true); exportEdit:SetAutoFocus(false); exportEdit:SetFontObject(ChatFontNormal); exportEdit:SetWidth(545); exportEdit:SetTextInsets(6,6,6,6); exportEdit:SetScript("OnEscapePressed",function() exportFrame:Hide() end); scroll:SetScrollChild(exportEdit)
-    Button(exportFrame,"Close",90,24,function() exportFrame:Hide() end):SetPoint("BOTTOMRIGHT",-14,12)
-  end
-  exportEdit:SetText(report); exportEdit:SetHeight(math.max(310,(#auditUI.members+4)*16)); exportFrame:Show(); exportEdit:SetFocus(); exportEdit:HighlightText()
+  ShowSelectableReport("RealmOps instance audit",table.concat(lines,"\n"))
 end
 
 local function AuditResultRow(parent)
@@ -592,7 +647,8 @@ local function BuildInstances()
   Button(resultPanel,"Re-audit",70,18,function() if auditUI.lastMap then auditUI.mapBox:SetText(auditUI.lastMap); auditUI.diffBox:SetText(auditUI.lastDifficulty); RunAudit() else SetStatus("Run an audit first.",true) end end,"Repeat the last audit"):SetPoint("TOPRIGHT",-8,-4)
   local scroll=CreateFrame("ScrollFrame","REALMOPS_AuditResultScroll",resultPanel,"UIPanelScrollFrameTemplate"); scroll:SetPoint("TOPLEFT",8,-48); scroll:SetPoint("BOTTOMRIGHT",-28,54); auditUI.scroll=scroll
   local child=CreateFrame("Frame",nil,scroll); child:SetWidth(610); child:SetHeight(1); scroll:SetScrollChild(child); auditUI.scrollChild=child
-  for i=1,40 do auditUI.memberRows[i]=AuditResultRow(child) end
+  auditUI.reportEdit=CreateFrame("EditBox",nil,child); auditUI.reportEdit:SetPoint("TOPLEFT",4,-2); auditUI.reportEdit:SetWidth(600); auditUI.reportEdit:SetHeight(1); auditUI.reportEdit:SetMultiLine(true); auditUI.reportEdit:SetAutoFocus(false); auditUI.reportEdit:SetFontObject(GameFontHighlightSmall); auditUI.reportEdit:SetTextColor(unpack(C.white)); auditUI.reportEdit:SetScript("OnEscapePressed",function(self) self:ClearFocus() end)
+  for i=1,40 do auditUI.memberRows[i]=AuditResultRow(child); auditUI.memberRows[i]:Hide() end
   scroll:EnableMouseWheel(true); scroll:SetScript("OnMouseWheel",function(self,delta) if Settings().mouseWheelAudit then self:SetVerticalScroll(math.max(0,self:GetVerticalScroll()-delta*80)) end end)
   local hs=CreateFrame("Slider","REALMOPS_AuditHorizontalScroll",resultPanel,"OptionsSliderTemplate"); hs:SetPoint("BOTTOMLEFT",12,31); hs:SetPoint("BOTTOMRIGHT",-12,31); hs:SetHeight(16); hs:SetMinMaxValues(0,0); hs:SetValueStep(10); hs:SetValue(0); auditUI.horizontal=hs
   _G[hs:GetName().."Low"]:SetText(""); _G[hs:GetName().."High"]:SetText(""); _G[hs:GetName().."Text"]:SetText("")
@@ -670,13 +726,17 @@ local function RenderCompatibility()
     value=tostring(value or "unknown")
     if value=="no" then return "|cff55ff55Clean|r" end
     if value=="yes" then return "|cffffff55Modified|r" end
-    return "|cffaaaaaaUnknown|r"
+    return "|cffffff55Unknown|r"
   end
+  local status=protocolOK and "|cff55ff55Compatible|r" or "|cffff5555Incompatible|r"
+  local release=protocolOK and "|cff55ff55Supported|r" or "|cffff5555Unsupported|r"
+  local explanation=protocolOK
+    and "|cffaaaaaaDifferent addon and module versions can still be supported. If RealmOps behaves unexpectedly, version alignment is a useful first troubleshooting check.|r"
+    or "|cffffaaaaThe addon and module use different protocol versions. Update one component before relying on the tool.|r"
 
   compatUI.text:SetText(string.format(
-    "RealmOps\nAddon      |cffffffff%s|r\nModule     |cffffffff%s|r\nProtocol   v%s\nStatus     %s\n\nCommits\nRealmOps   |cffffffff%s|r\nCore       |cffffffff%s|r\nPlayerbots |cffffffff%s|r\n\nWorkspace\nRealmOps   %s\nCore       %s\nPlayerbots %s\n\nBuild\n%s\nBuilt %s",
-    ADDON_VERSION,f.module or "unknown",f.protocol or "?",
-    protocolOK and "|cff55ff55Compatible|r" or "|cffff5555Protocol mismatch|r",
+    "RealmOps\nAddon      |cffffffff%s|r\nModule     |cffffffff%s|r\nProtocol   v%s\nStatus     %s\n\nRelease\n%s\n%s\n\nCommits\nRealmOps   |cffffffff%s|r\nCore       |cffffffff%s|r\nPlayerbots |cffffffff%s|r\n\nWorkspace\nRealmOps   %s\nCore       %s\nPlayerbots %s\n\nBuild\n%s\nBuilt %s",
+    ADDON_VERSION,f.module or "unknown",f.protocol or "?",status,release,explanation,
     f.modulegit or "unknown",f.core or "unknown",f.playerbots or "unknown",
     Workspace(f.moduledirty),Workspace(f.coredirty),Workspace(f.playerbotsdirty),
     f.build or "unknown",f.built or "unknown"))
@@ -715,7 +775,7 @@ local function BuildOptions()
 
   local diagnostics=CreateFrame("Frame",nil,p); diagnostics:SetPoint("TOPLEFT",340,-62); diagnostics:SetWidth(300); diagnostics:SetHeight(408); Backdrop(diagnostics,C.panel)
   local diagTitle=Label(diagnostics,"Compatibility diagnostics"); diagTitle:SetPoint("TOPLEFT",10,-10)
-  compatUI.text=diagnostics:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); compatUI.text:SetPoint("TOPLEFT",10,-38); compatUI.text:SetPoint("TOPRIGHT",-10,-38); compatUI.text:SetJustifyH("LEFT"); compatUI.text:SetJustifyV("TOP"); compatUI.text:SetTextColor(unpack(C.white))
+  compatUI.text=diagnostics:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); compatUI.text:SetPoint("TOPLEFT",10,-38); compatUI.text:SetPoint("TOPRIGHT",-10,-38); compatUI.text:SetJustifyH("LEFT"); compatUI.text:SetJustifyV("TOP"); compatUI.text:SetWordWrap(true); compatUI.text:SetTextColor(unpack(C.white))
   local check=CreateFrame("Button",nil,diagnostics,"UIPanelButtonTemplate"); check:SetWidth(150); check:SetHeight(24); check:SetText("Check compatibility"); check:SetPoint("BOTTOMLEFT",10,10); check:SetScript("OnClick",RequestCompatibility)
   RenderCompatibility()
 
@@ -760,7 +820,8 @@ end
 
 local function BuildUI()
   main=CreateFrame("Frame","REALMOPS_MainFrame",UIParent); main:SetWidth(650); main:SetHeight(500); main:SetClampedToScreen(true); main:SetFrameStrata("DIALOG"); Backdrop(main); RestorePoint(main,"main","CENTER",0,0); Movable(main,"main")
-  local title=Label(main,"RealmOps  |cffaaaaaa"..ADDON_VERSION.."|r"); title:SetPoint("TOPLEFT",14,-12)
+  local logo=main:CreateTexture(nil,"ARTWORK"); logo:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); logo:SetWidth(22); logo:SetHeight(22); logo:SetPoint("TOPLEFT",10,-6)
+  local title=Label(main,"RealmOps  |cffaaaaaa"..ADDON_VERSION.."|r"); title:SetPoint("TOPLEFT",36,-12)
   Button(main,"?",22,20,OpenOptions,"Open RealmOps options"):SetPoint("TOPRIGHT",-66,-8)
   Button(main,"_",22,20,HideMain,"Minimize to floating button"):SetPoint("TOPRIGHT",-38,-8)
   Button(main,"X",22,20,HideMain,"Close"):SetPoint("TOPRIGHT",-10,-8)
@@ -771,13 +832,15 @@ local function BuildUI()
   BuildCharacter(); BuildNPC(); BuildQuest(); BuildTeleport(); BuildItem(); BuildInstances(); SelectTab(RealmOpsDB.activeTab or "Character")
 
   mini=CreateFrame("Button","REALMOPS_MiniButton",UIParent); mini:SetWidth(36); mini:SetHeight(28); mini:SetClampedToScreen(true); mini:SetFrameStrata("DIALOG"); Backdrop(mini); RestorePoint(mini,"mini","CENTER",290,0); Movable(mini,"mini")
-  local mt=mini:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); mt:SetPoint("CENTER"); mt:SetText("RealmOps"); mt:SetTextColor(unpack(C.gold))
+  local mi=mini:CreateTexture(nil,"ARTWORK"); mi:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); mi:SetAllPoints()
+  local mt=mini:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); mt:SetPoint("CENTER"); mt:SetText(""); mt:SetTextColor(unpack(C.gold))
   mini:SetScript("OnClick",function(self) if self._dragged then self._dragged=nil; return end; ShowMain() end); mini:Hide()
 
   minimapButton=CreateFrame("Button","REALMOPS_MinimapButton",Settings().mbfCompatibility and UIParent or Minimap); minimapButton:SetWidth(24); minimapButton:SetHeight(22); minimapButton:SetFrameStrata("MEDIUM"); minimapButton:RegisterForClicks("LeftButtonUp","RightButtonUp"); minimapButton:RegisterForDrag("LeftButton")
   local bg=minimapButton:CreateTexture(nil,"BACKGROUND"); bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background"); bg:SetAllPoints()
   local bd=minimapButton:CreateTexture(nil,"OVERLAY"); bd:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); bd:SetPoint("TOPLEFT",-6,6); bd:SetPoint("BOTTOMRIGHT",6,-6)
-  local tx=minimapButton:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); tx:SetPoint("CENTER"); tx:SetText("RealmOps"); tx:SetTextColor(unpack(C.gold))
+  local icon=minimapButton:CreateTexture(nil,"ARTWORK"); icon:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); icon:SetPoint("TOPLEFT",2,-2); icon:SetPoint("BOTTOMRIGHT",-2,2)
+  local tx=minimapButton:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); tx:SetPoint("CENTER"); tx:SetText(""); tx:SetTextColor(unpack(C.gold))
   minimapButton:SetScript("OnClick",function(_,button) if button=="RightButton" then HideMain() elseif main:IsShown() then HideMain() else ShowMain() end end)
   minimapButton:SetScript("OnDragStart",function(self) self:SetScript("OnUpdate",function() local mx,my=Minimap:GetCenter(); local px,py=GetCursorPosition(); local s=Minimap:GetEffectiveScale(); RealmOpsDB.minimapAngle=math.deg(math.atan2(py/s-my,px/s-mx)); PositionMinimap() end) end)
   minimapButton:SetScript("OnDragStop",function(self) self:SetScript("OnUpdate",nil) end); PositionMinimap(); ApplySettings()
@@ -808,6 +871,12 @@ events:SetScript("OnEvent",function(_,event,arg1)
       table.insert(questUI.chain,f); RenderQuest()
     elseif kind=="QUEST_INFO_END" then
       RenderQuest(); SetStatus("Quest details and chain loaded")
+    elseif kind=="QUEST_AUDIT_BEGIN" then
+      questUI.auditActive=true; questUI.auditMembers={}; questUI.auditQuest=tonumber(f.id); RenderQuest(); SetStatus("Quest group audit started")
+    elseif kind=="QUEST_AUDIT_MEMBER" then
+      table.insert(questUI.auditMembers,f); RenderQuest()
+    elseif kind=="QUEST_AUDIT_END" then
+      RenderQuest(); SetStatus("Quest group audit completed for "..#questUI.auditMembers.." member(s)")
     elseif kind=="QUEST_ERROR" then SetStatus(f.reason or "Quest module error",true)
     elseif kind=="SEARCH" then
       if #auditUI.search<8 then table.insert(auditUI.search,f) end; RenderAudit(); SetStatus(#auditUI.search.." instance match(es)")

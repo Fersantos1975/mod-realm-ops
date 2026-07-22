@@ -25,6 +25,7 @@ public:
         {
             { "search", RealmOps::QuestInspector::Search, rbac::RBAC_PERM_COMMAND_LOOKUP_QUEST, Console::No },
             { "info", RealmOps::QuestInspector::Info, rbac::RBAC_PERM_COMMAND_LOOKUP_QUEST, Console::No },
+            { "audit", RealmOps::QuestInspector::Audit, rbac::RBAC_PERM_COMMAND_LOOKUP_QUEST, Console::No },
         };
         static ChatCommandTable realmOpsTable =
         {
