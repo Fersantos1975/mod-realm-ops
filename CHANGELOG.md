@@ -1,3 +1,11 @@
+
+## 0.3.0-dev1 — Unified Eligibility foundation
+
+- Added the new large-format Eligibility Analyzer dashboard.
+- Combined instance search, group readiness, requirement status, player blockers, quest-chain details, and recommendations in one workflow.
+- Added player selection, blocking-quest drill-down, whisper shortcut, and audit export.
+- Preserved the existing Character, NPC, Quest, Instances, Teleport, and Item tools.
+- Development build only; not approved as the stable 0.3.0 release.
 # Changelog
 ## v0.2.0-rc2-stabilization.1
 

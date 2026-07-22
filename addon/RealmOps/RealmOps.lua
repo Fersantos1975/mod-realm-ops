@@ -1,6 +1,6 @@
 local ADDON = ...
 
--- RealmOps v0.2.0
+-- RealmOps v0.3.0-dev1
 -- Target: WoW 3.3.5a / AzerothCore. All server commands live here so that
 -- branch-specific command names can be changed without touching the UI.
 local CMD = {
@@ -42,6 +42,7 @@ local questUI={results={},rows={},info=nil,chain={},detailText=nil,chainText=nil
 local compatUI={data=nil,text=nil}
 local instanceUI={my={},target={},captureUntil=0,myRows={},targetRows={},myOffset=0,targetOffset=0,mapBox=nil,diffBox=nil,targetLabel=nil}
 local auditUI={search={},members={},searchRows={},memberRows={},filterButtons={},filtered={},mapBox=nil,diffBox=nil,summary=nil,scroll=nil,scrollChild=nil,horizontal=nil,filter="ALL",lastMap=nil,lastDifficulty=nil,reportEdit=nil}
+local eligibilityUI={searchRows={},memberRows={},selected=nil,title=nil,subtitle=nil,ready=nil,blocked=nil,warnings=nil,requirementTexts={},chainText=nil,detailText=nil,recommendation=nil,mapBox=nil,diffBox=nil,searchBox=nil,summary=nil}
 local exportFrame, exportEdit
 local ShowSelectableReport
 local defaults={
@@ -51,7 +52,7 @@ local defaults={
   rememberAuditFilter=true,autoReaudit=false,confirmResetSelected=true,confirmResetAll=true,
   warnNoTarget=true,compactAuditRows=false,auditFontSize=10,shiftClickInsert=true,
 }
-local ADDON_VERSION="0.2.0-rc2"
+local ADDON_VERSION="0.3.0-dev1"
 local PROTOCOL_VERSION="1"
 local TESTED_CORE="bf25eae704f5"
 local TESTED_PLAYERBOTS="3fa1c1e49f8f"
@@ -604,6 +605,152 @@ local function AuditResultRow(parent)
   row:SetScript("OnLeave",function() GameTooltip:Hide() end); row:Hide(); return row
 end
 
+
+local function EligibilityPanel(parent, title, x, y, w, h)
+  local f=CreateFrame("Frame",nil,parent); f:SetPoint("TOPLEFT",x,y); f:SetWidth(w); f:SetHeight(h); Backdrop(f,C.panel)
+  local t=Label(f,title,"GameFontNormalSmall"); t:SetPoint("TOPLEFT",10,-9)
+  return f
+end
+
+local function EligibilityValue(parent, text, x, y, big)
+  local f=parent:CreateFontString(nil,"OVERLAY",big and "GameFontNormalLarge" or "GameFontHighlightSmall")
+  f:SetPoint("TOPLEFT",x,y); f:SetText(text or "-"); f:SetTextColor(unpack(C.white)); return f
+end
+
+local function EligibilityReasonQuest(reason)
+  return tonumber(tostring(reason or ""):match("[Qq]uest%s+(%d+)") or tostring(reason or ""):match("(%d%d%d%d%d)"))
+end
+
+local function RenderEligibility()
+  if not eligibilityUI.title then return end
+  local pass,fail,warn=0,0,0
+  for _,r in ipairs(auditUI.members) do
+    if r.result=="PASS" then pass=pass+1 elseif r.result=="WARN" then warn=warn+1 else fail=fail+1 end
+  end
+  eligibilityUI.ready:SetText(tostring(pass)); eligibilityUI.blocked:SetText(tostring(fail)); eligibilityUI.warnings:SetText(tostring(warn))
+  local total=#auditUI.members
+  eligibilityUI.summary:SetText(total>0 and string.format("%d / %d players ready",pass,total) or "Run an audit to evaluate the group")
+  local currentTitle="Select an instance"
+  for _,r in ipairs(auditUI.search) do if tonumber(r.map)==tonumber(auditUI.lastMap) then currentTitle=r.name or currentTitle break end end
+  eligibilityUI.title:SetText(currentTitle)
+  eligibilityUI.subtitle:SetText(auditUI.lastMap and string.format("Map %s  •  Difficulty %s",auditUI.lastMap,auditUI.lastDifficulty or 0) or "Search for an instance to begin")
+  local req={level=true,difficulty=true,heroic=true,quest=true,lockout=true}
+  for _,r in ipairs(auditUI.members) do
+    local reason=tostring(r.reason or ""):lower()
+    if r.result~="PASS" then
+      if reason:find("level") then req.level=false end
+      if reason:find("difficult") then req.difficulty=false end
+      if reason:find("heroic") then req.heroic=false end
+      if reason:find("quest") or EligibilityReasonQuest(r.reason) then req.quest=false end
+      if reason:find("lock") or reason:find("instance id") or reason:find("bind") then req.lockout=false end
+    end
+  end
+  local order={{"level","Level"},{"difficulty","Difficulty"},{"heroic","Heroic"},{"quest","Quest chain"},{"lockout","Lockout"}}
+  for i,v in ipairs(order) do
+    local ok=req[v[1]]; eligibilityUI.requirementTexts[i]:SetText((ok and "|cff55ff55✓ PASS|r  " or "|cffff5555✕ CHECK|r  ")..v[2])
+  end
+  for i,row in ipairs(eligibilityUI.searchRows) do
+    local r=auditUI.search[i]
+    if r then row.data=r; row.label:SetText(string.format("%s
+|cffaaaaaaMap %s • %s|r",r.name or "Unknown",r.map or "?",r.type or "instance")); row:Show() else row.data=nil; row:Hide() end
+  end
+  for i,row in ipairs(eligibilityUI.memberRows) do
+    local r=auditUI.members[i]
+    if r then
+      row.data=r
+      local color=r.result=="PASS" and "|cff55ff55" or (r.result=="WARN" and "|cffffff55" or "|cffff5555")
+      local quest=EligibilityReasonQuest(r.reason)
+      local qtext=quest and ("Missing "..quest) or (r.result=="PASS" and "Ready" or "Check")
+      row.name:SetText(r.name or "Unknown"); row.quest:SetText(qtext); row.lockout:SetText(tostring(r.reason or ""):lower():find("lock") and "CHECK" or "PASS"); row.diff:SetText(tostring(r.reason or ""):lower():find("difficult") and "CHECK" or "PASS"); row.result:SetText(color..(r.result or "?").."|r"); row:Show()
+    else row.data=nil; row:Hide() end
+  end
+  local selected=eligibilityUI.selected
+  if selected then
+    local qid=EligibilityReasonQuest(selected.reason)
+    eligibilityUI.detailText:SetText(string.format("|cffffd200%s|r
+
+Result: %s
+
+%s%s",selected.name or "Unknown",selected.result or "?",selected.reason or "No details",qid and ("
+
+Blocking quest: "..qid.."
+Use ‘Open Quest’ to inspect the chain and audit this quest.") or ""))
+  else eligibilityUI.detailText:SetText("Select a player row to inspect the blocker and available actions.") end
+  local blockers={}
+  for _,r in ipairs(auditUI.members) do if r.result~="PASS" then table.insert(blockers,r) end end
+  if #blockers==0 and total>0 then eligibilityUI.recommendation:SetText("|cff55ff55Group ready.|r
+All reported checks passed. You can proceed to the instance.")
+  elseif #blockers>0 then
+    local first=blockers[1]; local qid=EligibilityReasonQuest(first.reason)
+    eligibilityUI.recommendation:SetText(string.format("|cffff5555Group not ready.|r
+%d player(s) blocked.
+
+First action: resolve %s for %s.",#blockers,qid and ("quest "..qid) or (first.reason or "the reported issue"),first.name or "the player"))
+  else eligibilityUI.recommendation:SetText("Search for an instance, select it, and run Group Audit.") end
+  local chain={"Quest chain"}
+  if questUI.info then table.insert(chain,string.format("|cffffd200%s [%s]|r",questUI.info.title or "Quest",questUI.info.id or "?")) end
+  for _,q in ipairs(questUI.chain) do table.insert(chain,string.format("%s  %s [%s]",q.direction or "LINK",q.title or "Unknown",q.id or "?")) end
+  if #chain==1 then table.insert(chain,"Select a blocked player and click Open Quest.") end
+  eligibilityUI.chainText:SetText(table.concat(chain,"
+
+"))
+end
+
+local function BuildEligibility()
+  local p=NewPage("Eligibility")
+  local search=EligibilityPanel(p,"INSTANCE ACCESS ANALYZER",12,-12,740,74)
+  eligibilityUI.searchBox=Edit(search,300,false); eligibilityUI.searchBox:SetPoint("TOPLEFT",12,-34); eligibilityUI.searchBox:SetText("Pit of Saron")
+  Button(search,"Search",72,24,function() local q=NonEmpty(eligibilityUI.searchBox,"an instance title"); if q then auditUI.search={}; RenderEligibility(); SendCommand(string.format(CMD.auditSearch,q)); SetStatus("Searching instance access data...") end end):SetPoint("LEFT",eligibilityUI.searchBox,"RIGHT",8,0)
+  eligibilityUI.mapBox=Edit(search,70,true); eligibilityUI.mapBox:SetPoint("LEFT",eligibilityUI.searchBox,"RIGHT",92,0)
+  eligibilityUI.diffBox=Edit(search,44,true); eligibilityUI.diffBox:SetPoint("LEFT",eligibilityUI.mapBox,"RIGHT",8,0); eligibilityUI.diffBox:SetText(tostring(Settings().defaultDifficulty))
+  Button(search,"Group Audit",104,24,function()
+    local map=PositiveId(eligibilityUI.mapBox,"map"); local diff=tonumber(eligibilityUI.diffBox:GetText())
+    if not map or not diff or diff<0 or diff>3 then SetStatus("Difficulty must be 0–3.",true); return end
+    auditUI.lastMap=map; auditUI.lastDifficulty=diff; auditUI.members={}; eligibilityUI.selected=nil; RenderAudit(); RenderEligibility(); SendCommand(string.format(CMD.auditGroup,map,diff)); SetStatus("Running combined eligibility audit...")
+  end):SetPoint("LEFT",eligibilityUI.diffBox,"RIGHT",8,0)
+
+  local matches=EligibilityPanel(p,"INSTANCE MATCHES",12,-94,220,222)
+  for i=1,6 do
+    local row=Button(matches,"",200,30,function(self) if self.data then local m=tonumber(self.data.map); eligibilityUI.mapBox:SetText(m or ""); auditUI.lastMap=m; RenderEligibility(); SetStatus("Selected "..(self.data.name or "instance")) end end)
+    row:SetPoint("TOPLEFT",10,-30-(i-1)*31); row.label=row:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); row.label:SetPoint("LEFT",7,0); row.label:SetPoint("RIGHT",-5,0); row.label:SetJustifyH("LEFT"); eligibilityUI.searchRows[i]=row; row:Hide()
+  end
+
+  local overview=EligibilityPanel(p,"GROUP READINESS",244,-94,508,92)
+  eligibilityUI.ready=EligibilityValue(overview,"0",18,-35,true); EligibilityValue(overview,"READY",18,-61)
+  eligibilityUI.blocked=EligibilityValue(overview,"0",135,-35,true); EligibilityValue(overview,"BLOCKED",135,-61)
+  eligibilityUI.warnings=EligibilityValue(overview,"0",270,-35,true); EligibilityValue(overview,"WARNINGS",270,-61)
+  eligibilityUI.summary=EligibilityValue(overview,"Run an audit",370,-42); eligibilityUI.summary:SetWidth(125); eligibilityUI.summary:SetJustifyH("CENTER")
+
+  local requirements=EligibilityPanel(p,"REQUIREMENTS",244,-198,508,118)
+  for i,name in ipairs({"Level","Difficulty","Heroic","Quest chain","Lockout"}) do
+    local t=EligibilityValue(requirements,"✓ PASS  "..name,14+((i-1)%3)*164,-34-math.floor((i-1)/3)*38); eligibilityUI.requirementTexts[i]=t
+  end
+
+  local matrix=EligibilityPanel(p,"PLAYER ELIGIBILITY MATRIX",12,-328,740,218)
+  local headers={{"PLAYER",8},{"QUEST",170},{"LOCKOUT",330},{"DIFFICULTY",430},{"READY",565}}
+  for _,h in ipairs(headers) do local t=EligibilityValue(matrix,h[1],h[2],-28); t:SetTextColor(unpack(C.gold)) end
+  for i=1,5 do
+    local row=CreateFrame("Button",nil,matrix); row:SetPoint("TOPLEFT",8,-48-(i-1)*31); row:SetWidth(724); row:SetHeight(28); row:SetBackdrop({bgFile="Interface\Buttons\WHITE8X8"}); row:SetBackdropColor(.07,.075,.09,.96)
+    row.name=EligibilityValue(row,"",8,-7); row.quest=EligibilityValue(row,"",162,-7); row.lockout=EligibilityValue(row,"",322,-7); row.diff=EligibilityValue(row,"",422,-7); row.result=EligibilityValue(row,"",557,-7)
+    row:SetScript("OnClick",function(self) eligibilityUI.selected=self.data; RenderEligibility() end); row:SetScript("OnEnter",function(self) self:SetBackdropColor(unpack(C.hover)) end); row:SetScript("OnLeave",function(self) self:SetBackdropColor(.07,.075,.09,.96) end); row:Hide(); eligibilityUI.memberRows[i]=row
+  end
+  Button(matrix,"Export",72,22,ShowAuditExport):SetPoint("BOTTOMRIGHT",-10,8)
+
+  local detail=EligibilityPanel(p,"PLAYER DETAILS",766,-12,250,248)
+  eligibilityUI.detailText=detail:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); eligibilityUI.detailText:SetPoint("TOPLEFT",12,-34); eligibilityUI.detailText:SetPoint("BOTTOMRIGHT",-12,50); eligibilityUI.detailText:SetJustifyH("LEFT"); eligibilityUI.detailText:SetJustifyV("TOP")
+  Button(detail,"Open Quest",92,22,function() local r=eligibilityUI.selected; local q=r and EligibilityReasonQuest(r.reason); if q then questUI.info=nil; questUI.chain={}; questUI.auditMembers={}; SendCommand(string.format(CMD.questInfo,q)); SendCommand(string.format(CMD.questAudit,q)); SetStatus("Loading blocking quest "..q) else SetStatus("Selected player has no quest blocker.",true) end end):SetPoint("BOTTOMLEFT",10,12)
+  Button(detail,"Whisper",70,22,function() local r=eligibilityUI.selected; if r and r.name then ChatFrame_SendTell(r.name) else SetStatus("Select a player first.",true) end end):SetPoint("BOTTOMRIGHT",-10,12)
+
+  local chain=EligibilityPanel(p,"QUEST CHAIN",766,-272,250,150)
+  eligibilityUI.chainText=chain:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); eligibilityUI.chainText:SetPoint("TOPLEFT",12,-34); eligibilityUI.chainText:SetPoint("BOTTOMRIGHT",-12,10); eligibilityUI.chainText:SetJustifyH("LEFT"); eligibilityUI.chainText:SetJustifyV("TOP")
+
+  local rec=EligibilityPanel(p,"RECOMMENDATION",766,-434,250,112)
+  eligibilityUI.recommendation=rec:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); eligibilityUI.recommendation:SetPoint("TOPLEFT",12,-34); eligibilityUI.recommendation:SetPoint("BOTTOMRIGHT",-12,10); eligibilityUI.recommendation:SetJustifyH("LEFT"); eligibilityUI.recommendation:SetJustifyV("TOP")
+  eligibilityUI.title=Label(p,"Select an instance","GameFontNormalLarge"); eligibilityUI.title:SetPoint("TOPLEFT",246,-28)
+  eligibilityUI.subtitle=EligibilityValue(p,"Search for an instance to begin",246,-51)
+  RenderEligibility()
+end
+
 local function BuildInstances()
   local p=NewPage("Instances")
   local auditPage=CreateFrame("Frame",nil,p); auditPage:SetPoint("TOPLEFT",0,-36); auditPage:SetPoint("BOTTOMRIGHT")
@@ -819,28 +966,28 @@ local function BuildOptions()
 end
 
 local function BuildUI()
-  main=CreateFrame("Frame","REALMOPS_MainFrame",UIParent); main:SetWidth(650); main:SetHeight(500); main:SetClampedToScreen(true); main:SetFrameStrata("DIALOG"); Backdrop(main); RestorePoint(main,"main","CENTER",0,0); Movable(main,"main")
-  local logo=main:CreateTexture(nil,"ARTWORK"); logo:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); logo:SetWidth(22); logo:SetHeight(22); logo:SetPoint("TOPLEFT",10,-6)
-  local title=Label(main,"RealmOps  |cffaaaaaa"..ADDON_VERSION.."|r"); title:SetPoint("TOPLEFT",36,-12)
-  Button(main,"?",22,20,OpenOptions,"Open RealmOps options"):SetPoint("TOPRIGHT",-66,-8)
-  Button(main,"_",22,20,HideMain,"Minimize to floating button"):SetPoint("TOPRIGHT",-38,-8)
-  Button(main,"X",22,20,HideMain,"Close"):SetPoint("TOPRIGHT",-10,-8)
-  local names={"Character","NPC","Quest","Teleport","Item","Instances"}
-  for i,n in ipairs(names) do local b=Button(main,n,96,24,function() SelectTab(n) end); b:SetPoint("TOPLEFT",14+(i-1)*101,-39); tabs[n]=b end
-  content=CreateFrame("Frame",nil,main); content:SetPoint("TOPLEFT",10,-70); content:SetPoint("BOTTOMRIGHT",-10,32); Backdrop(content,C.panel)
-  statusText=main:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); statusText:SetPoint("BOTTOMLEFT",14,11); statusText:SetPoint("BOTTOMRIGHT",-14,11); statusText:SetJustifyH("LEFT")
-  BuildCharacter(); BuildNPC(); BuildQuest(); BuildTeleport(); BuildItem(); BuildInstances(); SelectTab(RealmOpsDB.activeTab or "Character")
+  main=CreateFrame("Frame","REALMOPS_MainFrame",UIParent); main:SetWidth(1050); main:SetHeight(650); main:SetClampedToScreen(true); main:SetFrameStrata("DIALOG"); Backdrop(main); RestorePoint(main,"main","CENTER",0,0); Movable(main,"main")
+  local logo=main:CreateTexture(nil,"ARTWORK"); logo:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); logo:SetWidth(28); logo:SetHeight(28); logo:SetPoint("TOPLEFT",14,-8)
+  local title=Label(main,"RealmOps  |cffaaaaaa"..ADDON_VERSION.."|r"); title:SetPoint("TOPLEFT",50,-15)
+  Button(main,"?",22,20,OpenOptions,"Open RealmOps options"):SetPoint("TOPRIGHT",-66,-10)
+  Button(main,"_",22,20,HideMain,"Minimize to floating button"):SetPoint("TOPRIGHT",-38,-10)
+  Button(main,"X",22,20,HideMain,"Close"):SetPoint("TOPRIGHT",-10,-10)
+  local nav=CreateFrame("Frame",nil,main); nav:SetPoint("TOPLEFT",10,-48); nav:SetPoint("BOTTOMLEFT",10,34); nav:SetWidth(150); Backdrop(nav,C.panel)
+  local names={"Eligibility","Character","NPC","Quest","Instances","Teleport","Item"}
+  for i,n in ipairs(names) do local b=Button(nav,n,128,32,function() SelectTab(n) end); b:SetPoint("TOPLEFT",11,-12-(i-1)*40); tabs[n]=b end
+  local about=nav:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); about:SetPoint("BOTTOMLEFT",12,14); about:SetText("Protocol v"..PROTOCOL_VERSION.."
+AzerothCore RealmOps"); about:SetTextColor(.6,.65,.7,1)
+  content=CreateFrame("Frame",nil,main); content:SetPoint("TOPLEFT",170,-48); content:SetPoint("BOTTOMRIGHT",-10,34); Backdrop(content,C.panel)
+  statusText=main:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); statusText:SetPoint("BOTTOMLEFT",174,12); statusText:SetPoint("BOTTOMRIGHT",-14,12); statusText:SetJustifyH("LEFT")
+  BuildEligibility(); BuildCharacter(); BuildNPC(); BuildQuest(); BuildTeleport(); BuildItem(); BuildInstances(); SelectTab(RealmOpsDB.activeTab or "Eligibility")
 
   mini=CreateFrame("Button","REALMOPS_MiniButton",UIParent); mini:SetWidth(36); mini:SetHeight(28); mini:SetClampedToScreen(true); mini:SetFrameStrata("DIALOG"); Backdrop(mini); RestorePoint(mini,"mini","CENTER",290,0); Movable(mini,"mini")
   local mi=mini:CreateTexture(nil,"ARTWORK"); mi:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); mi:SetAllPoints()
-  local mt=mini:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); mt:SetPoint("CENTER"); mt:SetText(""); mt:SetTextColor(unpack(C.gold))
   mini:SetScript("OnClick",function(self) if self._dragged then self._dragged=nil; return end; ShowMain() end); mini:Hide()
-
   minimapButton=CreateFrame("Button","REALMOPS_MinimapButton",Settings().mbfCompatibility and UIParent or Minimap); minimapButton:SetWidth(24); minimapButton:SetHeight(22); minimapButton:SetFrameStrata("MEDIUM"); minimapButton:RegisterForClicks("LeftButtonUp","RightButtonUp"); minimapButton:RegisterForDrag("LeftButton")
-  local bg=minimapButton:CreateTexture(nil,"BACKGROUND"); bg:SetTexture("Interface\\Minimap\\UI-Minimap-Background"); bg:SetAllPoints()
-  local bd=minimapButton:CreateTexture(nil,"OVERLAY"); bd:SetTexture("Interface\\Minimap\\MiniMap-TrackingBorder"); bd:SetPoint("TOPLEFT",-6,6); bd:SetPoint("BOTTOMRIGHT",6,-6)
+  local bg=minimapButton:CreateTexture(nil,"BACKGROUND"); bg:SetTexture("Interface\Minimap\UI-Minimap-Background"); bg:SetAllPoints()
+  local bd=minimapButton:CreateTexture(nil,"OVERLAY"); bd:SetTexture("Interface\Minimap\MiniMap-TrackingBorder"); bd:SetPoint("TOPLEFT",-6,6); bd:SetPoint("BOTTOMRIGHT",6,-6)
   local icon=minimapButton:CreateTexture(nil,"ARTWORK"); icon:SetTexture("Interface\AddOns\RealmOps\Media\realmops-icon.tga"); icon:SetPoint("TOPLEFT",2,-2); icon:SetPoint("BOTTOMRIGHT",-2,2)
-  local tx=minimapButton:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall"); tx:SetPoint("CENTER"); tx:SetText(""); tx:SetTextColor(unpack(C.gold))
   minimapButton:SetScript("OnClick",function(_,button) if button=="RightButton" then HideMain() elseif main:IsShown() then HideMain() else ShowMain() end end)
   minimapButton:SetScript("OnDragStart",function(self) self:SetScript("OnUpdate",function() local mx,my=Minimap:GetCenter(); local px,py=GetCursorPosition(); local s=Minimap:GetEffectiveScale(); RealmOpsDB.minimapAngle=math.deg(math.atan2(py/s-my,px/s-mx)); PositionMinimap() end) end)
   minimapButton:SetScript("OnDragStop",function(self) self:SetScript("OnUpdate",nil) end); PositionMinimap(); ApplySettings()
@@ -862,31 +1009,31 @@ events:SetScript("OnEvent",function(_,event,arg1)
       local ok=tostring(f.protocol or "")==PROTOCOL_VERSION
       SetStatus(ok and "RealmOps server module detected; protocol compatible" or "RealmOps addon/module protocol mismatch",not ok)
     elseif kind=="QUEST_SEARCH" then
-      if #questUI.results<6 then table.insert(questUI.results,f) end; RenderQuest(); SetStatus(#questUI.results.." quest match(es) with faction data")
+      if #questUI.results<6 then table.insert(questUI.results,f) end; RenderQuest(); RenderEligibility(); SetStatus(#questUI.results.." quest match(es) with faction data")
     elseif kind=="QUEST_SEARCH_END" then
       if #questUI.results==0 then SetStatus("No matching quests found.",true) else SetStatus(#questUI.results.." quest result(s); select one for details") end
     elseif kind=="QUEST_INFO" then
-      questUI.info=f; questUI.chain={}; RenderQuest(); SetStatus("Loaded quest "..(f.id or "?").." compatibility")
+      questUI.info=f; questUI.chain={}; RenderQuest(); RenderEligibility(); SetStatus("Loaded quest "..(f.id or "?").." compatibility")
     elseif kind=="QUEST_CHAIN" then
-      table.insert(questUI.chain,f); RenderQuest()
+      table.insert(questUI.chain,f); RenderQuest(); RenderEligibility()
     elseif kind=="QUEST_INFO_END" then
-      RenderQuest(); SetStatus("Quest details and chain loaded")
+      RenderQuest(); RenderEligibility(); SetStatus("Quest details and chain loaded")
     elseif kind=="QUEST_AUDIT_BEGIN" then
-      questUI.auditActive=true; questUI.auditMembers={}; questUI.auditQuest=tonumber(f.id); RenderQuest(); SetStatus("Quest group audit started")
+      questUI.auditActive=true; questUI.auditMembers={}; questUI.auditQuest=tonumber(f.id); RenderQuest(); RenderEligibility(); SetStatus("Quest group audit started")
     elseif kind=="QUEST_AUDIT_MEMBER" then
-      table.insert(questUI.auditMembers,f); RenderQuest()
+      table.insert(questUI.auditMembers,f); RenderQuest(); RenderEligibility()
     elseif kind=="QUEST_AUDIT_END" then
-      RenderQuest(); SetStatus("Quest group audit completed for "..#questUI.auditMembers.." member(s)")
+      RenderQuest(); RenderEligibility(); SetStatus("Quest group audit completed for "..#questUI.auditMembers.." member(s)")
     elseif kind=="QUEST_ERROR" then SetStatus(f.reason or "Quest module error",true)
     elseif kind=="SEARCH" then
-      if #auditUI.search<8 then table.insert(auditUI.search,f) end; RenderAudit(); SetStatus(#auditUI.search.." instance match(es)")
+      if #auditUI.search<8 then table.insert(auditUI.search,f) end; RenderAudit(); RenderEligibility(); SetStatus(#auditUI.search.." instance match(es)")
     elseif kind=="BEGIN" then
-      auditUI.members={}; RenderAudit(); SetStatus("Auditing "..(f.name or "instance").."...")
+      auditUI.members={}; RenderAudit(); RenderEligibility(); SetStatus("Auditing "..(f.name or "instance").."...")
     elseif kind=="MEMBER" then
-      table.insert(auditUI.members,f); RenderAudit()
+      table.insert(auditUI.members,f); RenderAudit(); RenderEligibility()
     elseif kind=="END" then
       local pass,fail,warn=0,0,0; for _,r in ipairs(auditUI.members) do if r.result=="PASS" then pass=pass+1 elseif r.result=="WARN" then warn=warn+1 else fail=fail+1 end end
-      SetStatus(string.format("Audit complete: %d pass, %d warning, %d fail/offline",pass,warn,fail))
+      RenderEligibility(); SetStatus(string.format("Audit complete: %d pass, %d warning, %d fail/offline",pass,warn,fail))
     elseif kind=="ERROR" then SetStatus(f.reason or "Instance audit error",true) end
   elseif event=="CHAT_MSG_SYSTEM" and instanceUI.captureUntil>0 and GetTime()<=instanceUI.captureUntil then
     local plain=tostring(arg1):gsub("|c%x%x%x%x%x%x%x%x",""):gsub("|r","")
