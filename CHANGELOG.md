@@ -1,4 +1,9 @@
 # Changelog
+## v0.2.0-rc2-stabilization.1
+
+- Fixed `InstanceInspector::Audit` declaration for AzerothCore Playerbot command API.
+- Use the globally exposed `Optional<T>` command argument type, matching the implementation and command parser.
+
 
 ## 0.2.0-rc2
 

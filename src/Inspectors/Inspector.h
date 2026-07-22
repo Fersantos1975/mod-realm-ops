@@ -1,19 +1,22 @@
-#ifndef REALMOPS_INSTANCE_INSPECTOR_H
-#define REALMOPS_INSTANCE_INSPECTOR_H
+#ifndef REALMOPS_INSPECTOR_H
+#define REALMOPS_INSPECTOR_H
 
-#include "Chat.h"
-#include "Define.h"
+#include "InspectorContext.h"
+#include "Reports/Report.h"
 
-class ChatHandler;
+#include <string_view>
 
 namespace RealmOps
 {
-class InstanceInspector
+class Inspector
 {
 public:
-    static bool Search(ChatHandler* handler, Acore::ChatCommands::Tail search);
-    static bool Audit(ChatHandler* handler, uint32 mapId, Optional<uint8> difficultyArg);
-};
-}
+    virtual ~Inspector() = default;
 
-#endif
+    virtual std::string_view GetId() const noexcept = 0;
+    virtual std::string_view GetName() const noexcept = 0;
+    virtual Report Inspect(InspectorContext& context) const = 0;
+};
+} // namespace RealmOps
+
+#endif // REALMOPS_INSPECTOR_H
