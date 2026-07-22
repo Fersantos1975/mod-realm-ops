@@ -10,6 +10,8 @@ BuildInfo GetBuildInfo()
     BuildInfo info;
     info.moduleVersion = REALMOPS_MODULE_VERSION;
     info.protocolVersion = REALMOPS_PROTOCOL_VERSION;
+    info.releaseChannel = REALMOPS_RELEASE_CHANNEL;
+    info.capabilities = REALMOPS_CAPABILITIES;
     info.moduleCommit = REALMOPS_MODULE_GIT_HASH;
     info.moduleWorkspace = REALMOPS_MODULE_GIT_DIRTY;
     info.coreCommit = GitRevision::GetHash();

@@ -9,6 +9,8 @@ struct BuildInfo
 {
     std::string moduleVersion;
     std::string protocolVersion;
+    std::string releaseChannel;
+    std::string capabilities;
     std::string moduleCommit;
     std::string moduleWorkspace;
     std::string coreCommit;

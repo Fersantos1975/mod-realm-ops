@@ -2,7 +2,7 @@
 ## Title: |cffffd100RealmOps|r
 ## Notes: Compact AzerothCore GM toolkit for WotLK 3.3.5a
 ## Author: Fersantos
-## Version: 0.2.0
+## Version: 0.2.0-rc2
 ## SavedVariablesPerCharacter: RealmOpsDB
 
 RealmOps.lua

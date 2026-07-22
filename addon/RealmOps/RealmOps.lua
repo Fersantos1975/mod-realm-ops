@@ -51,7 +51,7 @@ local defaults={
   rememberAuditFilter=true,autoReaudit=false,confirmResetSelected=true,confirmResetAll=true,
   warnNoTarget=true,compactAuditRows=false,auditFontSize=10,shiftClickInsert=true,
 }
-local ADDON_VERSION="0.2.0"
+local ADDON_VERSION="0.2.0-rc2"
 local PROTOCOL_VERSION="1"
 local TESTED_CORE="bf25eae704f5"
 local TESTED_PLAYERBOTS="3fa1c1e49f8f"
@@ -735,9 +735,9 @@ local function RenderCompatibility()
     or "|cffffaaaaThe addon and module use different protocol versions. Update one component before relying on the tool.|r"
 
   compatUI.text:SetText(string.format(
-    "RealmOps\nAddon      |cffffffff%s|r\nModule     |cffffffff%s|r\nProtocol   v%s\nStatus     %s\n\nRelease\n%s\n%s\n\nCommits\nRealmOps   |cffffffff%s|r\nCore       |cffffffff%s|r\nPlayerbots |cffffffff%s|r\n\nWorkspace\nRealmOps   %s\nCore       %s\nPlayerbots %s\n\nBuild\n%s\nBuilt %s",
-    ADDON_VERSION,f.module or "unknown",f.protocol or "?",status,release,explanation,
-    f.modulegit or "unknown",f.core or "unknown",f.playerbots or "unknown",
+    "RealmOps\nAddon      |cffffffff%s|r\nModule     |cffffffff%s|r\nProtocol   v%s\nStatus     %s\n\nRelease\n%s (%s)\n%s\n\nCapabilities\n|cffffffff%s|r\n\nCommits\nRealmOps   |cffffffff%s|r\nCore       |cffffffff%s|r\nPlayerbots |cffffffff%s|r\n\nWorkspace\nRealmOps   %s\nCore       %s\nPlayerbots %s\n\nBuild\n%s\nBuilt %s",
+    ADDON_VERSION,f.module or "unknown",f.protocol or "?",status,release,f.release or "unknown",explanation,
+    f.capabilities or "not advertised",f.modulegit or "unknown",f.core or "unknown",f.playerbots or "unknown",
     Workspace(f.moduledirty),Workspace(f.coredirty),Workspace(f.playerbotsdirty),
     f.build or "unknown",f.built or "unknown"))
 end

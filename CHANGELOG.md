@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0-rc2
+
+- Fixed AzerothCore Playerbot command API type visibility by including `Chat.h`.
+- Namespace-qualified optional command arguments.
+- Added `RealmOpsManifest` as the central immutable metadata provider.
+- Added release-channel and capability advertisement to protocol v1.
+- Updated addon compatibility diagnostics to display release and capabilities.
+- Added `tools/realmops-check` preflight validation.
+- Added RC2 installation and architecture documentation.
+
 ## 0.2.0 Release Candidate 1
 
 - Add compatibility and release-support reporting.

@@ -1,7 +1,7 @@
 #ifndef REALMOPS_QUEST_INSPECTOR_H
 #define REALMOPS_QUEST_INSPECTOR_H
 
-#include "CommandScript.h"
+#include "Chat.h"
 #include "Define.h"
 class ChatHandler;
 
