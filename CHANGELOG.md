@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 - Unreleased
+
+- Simplified compatibility status to Compatible or Protocol mismatch.
+- Added RealmOps, AzerothCore, and Playerbots commit revisions.
+- Added per-workspace Clean, Modified, or Unknown state.
+- Centralized build metadata in `RealmOpsBuildInfo`.
+- Moved instance inspection into `Inspectors/Instance`.
+- Moved quest inspection into `Inspectors/Quest`.
+- Centralized protocol v1 output in `Protocol/LegacyProtocol`.
+- Reduced `mod_realm_ops.cpp` to command registration and delegation.
+
 ## 0.1.6
 
 - First RealmOps release.

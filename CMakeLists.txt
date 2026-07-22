@@ -1,4 +1,4 @@
-set(REALMOPS_MODULE_VERSION "0.1.6")
+set(REALMOPS_MODULE_VERSION "0.2.0")
 set(REALMOPS_PROTOCOL_VERSION "1")
 
 function(realmops_git_revision directory output_hash output_dirty)
@@ -31,6 +31,7 @@ function(realmops_git_revision directory output_hash output_dirty)
 endfunction()
 
 realmops_git_revision("${CMAKE_CURRENT_LIST_DIR}" REALMOPS_MODULE_GIT_HASH REALMOPS_MODULE_GIT_DIRTY)
+realmops_git_revision("${CMAKE_SOURCE_DIR}" REALMOPS_CORE_GIT_HASH REALMOPS_CORE_GIT_DIRTY)
 realmops_git_revision("${CMAKE_SOURCE_DIR}/modules/mod-playerbots" REALMOPS_PLAYERBOTS_GIT_HASH REALMOPS_PLAYERBOTS_GIT_DIRTY)
 
 configure_file(

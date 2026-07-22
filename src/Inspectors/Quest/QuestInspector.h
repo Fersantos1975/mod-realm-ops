@@ -1,18 +1,17 @@
-#ifndef REALMOPS_INSTANCE_INSPECTOR_H
-#define REALMOPS_INSTANCE_INSPECTOR_H
+#ifndef REALMOPS_QUEST_INSPECTOR_H
+#define REALMOPS_QUEST_INSPECTOR_H
 
 #include "CommandScript.h"
 #include "Define.h"
-
 class ChatHandler;
 
 namespace RealmOps
 {
-class InstanceInspector
+class QuestInspector
 {
 public:
     static bool Search(ChatHandler* handler, Acore::ChatCommands::Tail search);
-    static bool Audit(ChatHandler* handler, uint32 mapId, Optional<uint8> difficultyArg);
+    static bool Info(ChatHandler* handler, uint32 questId);
 };
 }
 

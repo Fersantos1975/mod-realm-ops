@@ -48,7 +48,7 @@ local defaults={
   rememberAuditFilter=true,autoReaudit=false,confirmResetSelected=true,confirmResetAll=true,
   warnNoTarget=true,compactAuditRows=false,auditFontSize=10,shiftClickInsert=true,
 }
-local ADDON_VERSION="0.1.6"
+local ADDON_VERSION="0.2.0"
 local PROTOCOL_VERSION="1"
 local TESTED_CORE="bf25eae704f5"
 local TESTED_PLAYERBOTS="3fa1c1e49f8f"
@@ -661,27 +661,25 @@ local function RenderCompatibility()
   if not compatUI.text then return end
   local f=compatUI.data
   if not f then
-    compatUI.text:SetText("Addon: |cffffffff"..ADDON_VERSION.."|r\nModule: |cffaaaaaaNot checked|r\n\nClick Check compatibility to query the running worldserver.")
+    compatUI.text:SetText("RealmOps\nAddon      |cffffffff"..ADDON_VERSION.."|r\nModule     |cffaaaaaaNot checked|r\nProtocol   v"..PROTOCOL_VERSION.."\n\nClick Check compatibility to query the running worldserver.")
     return
   end
+
   local protocolOK=tostring(f.protocol or "")==PROTOCOL_VERSION
-  local function RevisionMatches(actual,tested)
-    actual=tostring(actual or ""):match("^([0-9a-fA-F]+)") or ""
-    tested=tostring(tested or ""):match("^([0-9a-fA-F]+)") or ""
-    local compared=math.min(#actual,#tested)
-    return compared>=7 and actual:sub(1,compared):lower()==tested:sub(1,compared):lower()
+  local function Workspace(value)
+    value=tostring(value or "unknown")
+    if value=="no" then return "|cff55ff55Clean|r" end
+    if value=="yes" then return "|cffffff55Modified|r" end
+    return "|cffaaaaaaUnknown|r"
   end
-  local coreOK=RevisionMatches(f.core,TESTED_CORE)
-  local botsOK=RevisionMatches(f.playerbots,TESTED_PLAYERBOTS)
-  local overall=protocolOK and (coreOK and botsOK and "|cff55ff55TESTED / COMPATIBLE|r" or "|cffffff55COMPATIBLE PROTOCOL / UNTESTED BUILD|r") or "|cffff5555INCOMPATIBLE PROTOCOL|r"
+
   compatUI.text:SetText(string.format(
-    "Addon: |cffffffff%s|r\nModule: |cffffffff%s|r  (git %s%s)\nProtocol: %s  %s\n\nAzerothCore: |cffffffff%s|r\n%s\nPlayerbots: |cffffffff%s|r%s\n%s\n\nBuild: %s\nBuilt: %s\n\nResult: %s",
-    ADDON_VERSION,f.module or "unknown",f.modulegit or "unknown",f.moduledirty=="yes" and " |cffffff55(dirty)|r" or "",
-    f.protocol or "?",protocolOK and "|cff55ff55Compatible|r" or "|cffff5555Mismatch|r",
-    f.core or "unknown",coreOK and "|cff55ff55Tested revision|r" or "|cffffff55Different/untested revision|r",
-    f.playerbots or "unknown",f.playerbotsdirty=="yes" and " |cffffff55(dirty)|r" or "",
-    botsOK and "|cff55ff55Tested revision|r" or "|cffffff55Different/untested revision|r",
-    f.build or "unknown",f.built or "unknown",overall))
+    "RealmOps\nAddon      |cffffffff%s|r\nModule     |cffffffff%s|r\nProtocol   v%s\nStatus     %s\n\nCommits\nRealmOps   |cffffffff%s|r\nCore       |cffffffff%s|r\nPlayerbots |cffffffff%s|r\n\nWorkspace\nRealmOps   %s\nCore       %s\nPlayerbots %s\n\nBuild\n%s\nBuilt %s",
+    ADDON_VERSION,f.module or "unknown",f.protocol or "?",
+    protocolOK and "|cff55ff55Compatible|r" or "|cffff5555Protocol mismatch|r",
+    f.modulegit or "unknown",f.core or "unknown",f.playerbots or "unknown",
+    Workspace(f.moduledirty),Workspace(f.coredirty),Workspace(f.playerbotsdirty),
+    f.build or "unknown",f.built or "unknown"))
 end
 
 local function RequestCompatibility()
