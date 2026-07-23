@@ -1,12 +1,16 @@
-
-## 0.3.0-dev1 — Unified Eligibility foundation
-
-- Added the new large-format Eligibility Analyzer dashboard.
-- Combined instance search, group readiness, requirement status, player blockers, quest-chain details, and recommendations in one workflow.
-- Added player selection, blocking-quest drill-down, whisper shortcut, and audit export.
-- Preserved the existing Character, NPC, Quest, Instances, Teleport, and Item tools.
-- Development build only; not approved as the stable 0.3.0 release.
 # Changelog
+
+## 0.3.0-dev1 — navigation and acknowledgement foundation
+
+- Introduced the large RealmOps operations-center window and left-side navigation.
+- Added a Dashboard with direct access to eligibility, quest, compatibility, and project information workflows.
+- Promoted the proven instance group audit to the new Eligibility navigation entry.
+- Added a complete Information, Credits & Acknowledgements page.
+- Added selectable links for RealmOps, AzerothCore, mod-playerbots, AzerothCore documentation, and Wowhead WotLK.
+- Added transparent AI-assisted development acknowledgement for OpenAI ChatGPT.
+- Preserved protocol v1 and all v0.2.0-rc2 commands for compatibility during the staged v0.3.0 development cycle.
+- Updated addon and module development version to 0.3.0-dev1.
+
 ## v0.2.0-rc2-stabilization.1
 
 - Fixed `InstanceInspector::Audit` declaration for AzerothCore Playerbot command API.
